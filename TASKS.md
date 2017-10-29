@@ -5,9 +5,8 @@ The completed and future list of features added
 
 * [ ] Workspaces
 	- Should be standalone/isolated from each other
-	- [ ] Select directory as new workspace
-	- [ ] Create a new workspace in directory
-	- [ ] Switch between workspaces
+	- [x] Create a new workspace in directory
+	- [x] Switch between workspaces
 
 - [ ] Projects
 	- Contained within a workspace
