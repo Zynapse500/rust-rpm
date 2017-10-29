@@ -1,7 +1,13 @@
 [package]
-name = "project_manager"
+name = "rpm"
 version = "0.1.0"
 authors = ["chris"]
+
+
+[[bin]]
+name = "rpm"
+path = "src/main.rs"
+
 
 [dependencies]
 getch = "*"

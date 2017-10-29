@@ -225,7 +225,9 @@ impl Workspace {
 				}) {
 					success = true;
 					
-					fs::remove_dir();
+					if purge {
+						// fs::remove_dir();
+					}
 					
 					break;
 				}
