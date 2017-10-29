@@ -1,17 +1,17 @@
 {
-		"version": "0.2.0",
-		"configurations": [
-			{
-				"name": "Debug",
-				"type": "cppvsdbg",
-				"request": "launch",
-				"preLaunchTask": "build debug",
-				"program": "${workspaceFolder}/target/debug/project_manager.exe",
-				"args": ["remove", "workspace", "programming"],
-				"stopAtEntry": false,
-				"cwd": "${workspaceFolder}",
-				"environment": [],
-				"externalConsole": true
-			}
-		]
-	}
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Debug",
+			"type": "cppvsdbg",
+			"request": "launch",
+			"preLaunchTask": "build debug",
+			"program": "${workspaceFolder}/target/debug/rpm.exe",
+			"args": ["new", "workspace", "workspaces/programming"],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"externalConsole": true
+		}
+	]
+}

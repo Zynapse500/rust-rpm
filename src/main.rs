@@ -93,7 +93,9 @@ fn remove_item(matches: &ArgMatches) {
 	let purge = matches.is_present("purge");
 	
 	match matches.value_of("type") {
-		Some("workspace") => Workspace::remove(name, purge).unwrap(),
+		Some("workspace") => Workspace::remove(name, purge).unwrap_or_else(|err| {
+									fail_with_message(&format!("Error: {}", err));
+								}),
 		Some("project") => unimplemented!(),
 		Some(t) => fail_with_message(&format!("Error: {} is not recognized as internal type", t)),
 		None => fail_with_message("Error: Invalid argument parameters"),

@@ -41,6 +41,10 @@ impl Workspace {
 			path: workspace_path
 		};
 		
+		if let Err(e) = workspace.setup_preferences() {
+			return Err(format!("Failed to create workspace: {}", e));
+		}
+		
 		
 		if let Err(e) = workspace.save() {
 			match e {
@@ -205,7 +209,11 @@ impl Workspace {
 	
 	
 	/// Remove a named workspace, 'purge' determines wheter to completely erase from disk
-	pub fn remove(name: &str, purge: bool) -> Result<(), String> {
+	pub fn remove(path: &str, purge: bool) -> Result<(), String> {
+		use std::path::{MAIN_SEPARATOR};
+		let path = if MAIN_SEPARATOR == '\\' {path.replace("/", "\\")} else {path.replace("\\", "/")};
+		
+		let name = (path.chars().rev().take_while(|c| { *c != '/' && *c != '\\' }).collect::<String>()).chars().rev().collect::<String>();
 		
 		let mut tree = XmlTree::from_file(WORKSPACES_FILE_PATH);
 		
@@ -213,22 +221,34 @@ impl Workspace {
 		
 		for root in tree.roots_mut() {
 			if root.tag() == "workspaces" {
-				if let Some(element) = root.remove(|elem|{
+				
+				let removed_item = root.remove(|elem|{
 					if elem.tag() == "workspace" {
+						let mut correct_name = false;
+						let mut correct_path = false;
 						for attrib in elem.attributes() {
 							if attrib.key == "name" && attrib.value == name {
-								return true;
+								correct_name = true;
+							} else if attrib.key == "path" && attrib.value.contains(&path) {
+								correct_path = true;
 							}
+						}
+						if correct_name && correct_path {
+							return true;
 						}
 					}
 					false
-				}) {
-					success = true;
-					
+				});
+				
+				if let Some(element) = removed_item {
 					if purge {
-						// fs::remove_dir();
+						if let Some(workspace) = Workspace::from_xml_element(&element) {
+							if let Err(e) = workspace.purge() {
+								return Err(e);
+							}
+						}
 					}
-					
+					success = true;
 					break;
 				}
 			}
@@ -246,5 +266,26 @@ impl Workspace {
 		}
 		
 		Err(format!("No workspace with the name '{}'", name))
+	}
+	
+	
+	/// Purges the workspace from disk
+	fn purge(&self) -> Result<(), String> {
+		if let Err(e) = fs::remove_dir_all(&self.path) {
+			return Err("Failed to purge workspace!".to_owned());
+		}
+		
+		Ok(())
+	}
+	
+	
+	/// Creates the preference folder for a workspace
+	fn setup_preferences(&self) -> Result<(), String> {
+		use std::path::MAIN_SEPARATOR;
+		if let Err(e) = fs::create_dir(self.path.clone() + &MAIN_SEPARATOR.to_string() + ".workspace") {
+			return Err("Failed to create workspace preferences".to_owned());
+		}
+		
+		Ok(())
 	}
 }
