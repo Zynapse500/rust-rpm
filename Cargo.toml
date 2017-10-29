@@ -1,0 +1,10 @@
+[package]
+name = "project_manager"
+version = "0.1.0"
+authors = ["chris"]
+
+[dependencies]
+getch = "*"
+clap = "*"
+quick-xml = "*"
+
