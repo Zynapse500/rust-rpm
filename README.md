@@ -1,7 +1,7 @@
 # Project Manager
-A command line tool to manage various projects
+A command line tool that manages various projects
 
-## Features
+## Goals
 - Create a workspace containing all projects
 	- Structure projects by type within workspace
 	- Create new projects from included or custom templates
