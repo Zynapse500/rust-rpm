@@ -1,5 +1,5 @@
 # Tasks
-The completed and future list of features added
+The list of completed and future features
 
 ## TODO
 
