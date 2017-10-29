@@ -18,7 +18,7 @@ impl XmlTree {
 	/// Creates a XmlTree from text in string
 	pub fn from_str(text: &str) -> XmlTree {
 		let mut root = XmlElement{
-			name: "".to_owned(),
+			tag: "".to_owned(),
 			text: "".to_owned(),
 			attributes: Vec::new(),
 			sub_elements: Vec::new()
@@ -98,7 +98,7 @@ impl XmlTree {
 
 
 pub struct XmlElement {
-	name: String,
+	tag: String,
 	text: String,
 	
 	attributes: Vec<XmlAttribute>,
@@ -109,9 +109,9 @@ pub struct XmlElement {
 impl XmlElement {
 	
 	/// Create a new element
-	pub fn new(name: &str, text: &str, attributes: Vec<XmlAttribute>, sub_elements: Vec<XmlElement>) -> XmlElement {
+	pub fn new(tag: &str, text: &str, attributes: Vec<XmlAttribute>, sub_elements: Vec<XmlElement>) -> XmlElement {
 		XmlElement {
-			name: name.to_owned(),
+			tag: tag.to_owned(),
 			text: text.to_owned(),
 			attributes,
 			sub_elements
@@ -136,7 +136,7 @@ impl XmlElement {
 		
 		
 		XmlElement {
-			name,
+			tag: name,
 			text: "".to_owned(),
 			attributes,
 			sub_elements: Vec::new()
@@ -173,8 +173,8 @@ impl XmlElement {
 	/// Writes this element and all it's subelements to a writer
 	pub fn write_to_writer<W: Write>(&self, writer: &mut Writer<W>)
 	{
-		let mut start = BytesStart::borrowed(self.name.as_bytes(), self.name.len());
-		let end = BytesEnd::borrowed(self.name.as_bytes());
+		let mut start = BytesStart::borrowed(self.tag.as_bytes(), self.tag.len());
+		let end = BytesEnd::borrowed(self.tag.as_bytes());
 		
 		for attrib in self.attributes.iter() {
 			start.push_attribute((&attrib.key[..], &attrib.value[..]));
@@ -234,13 +234,30 @@ impl XmlElement {
 	
 	/// Return the tag of the element
 	pub fn tag(&self) -> &str {
-		&self.name
+		&self.tag
 	}
 	
 	
 	/// Add element to sub-elements
-	pub fn add_element(&mut self, elem: XmlElement) {
-		self.sub_elements.push(elem);
+	pub fn add_element(&mut self, element: XmlElement) {
+		self.sub_elements.push(element);
+	}
+	
+	
+	/// Adds an element to the sub-elements, if the predicate is true, merges them recursively instead
+	pub fn merge_with_or_add<F: FnMut(&XmlElement, &XmlElement) -> bool>(&mut self, element: XmlElement, predicate: &mut F) {
+		for elem in self.sub_elements.iter_mut() {
+			if predicate(elem, &element) {
+				// merge
+				for sub_elem in element.sub_elements {
+					elem.merge_with_or_add(sub_elem, predicate);
+				}
+				
+				return;
+			}
+		}
+		
+		self.add_element(element);
 	}
 }
 

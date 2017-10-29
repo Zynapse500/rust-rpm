@@ -3,6 +3,8 @@ use std::fs;
 use std::io::ErrorKind;
 
 use xmltree::{XmlTree, XmlElement};
+use project::Project;
+
 
 pub struct Workspace {
 	pub name: String,
@@ -25,7 +27,12 @@ impl Workspace {
 		let path = if MAIN_SEPARATOR == '\\' {path.replace("/", "\\")} else {path.replace("\\", "/")};
 		
 		// Get the name of the workspace
-		let name = (&path.chars().rev().take_while(|c| { *c != '/' && *c != '\\' }).collect::<String>()).chars().rev().collect();
+		let name = (&path.chars().rev().take_while(|c| { *c != '/' && *c != '\\' }).collect::<String>()).chars().rev().collect::<String>();
+		
+		// Check if workspace already exists
+		if let Ok(_) = Workspace::lookup(&name) {
+			return Err("Workspace with that name already exists".to_owned());
+		}
 		
 		// Create the workspace folder
 		if let Err(e) = fs::create_dir_all(&path) {
@@ -41,6 +48,7 @@ impl Workspace {
 			path: workspace_path
 		};
 		
+		// Create preference folder
 		if let Err(e) = workspace.setup_preferences() {
 			return Err(format!("Failed to create workspace: {}", e));
 		}
@@ -208,6 +216,47 @@ impl Workspace {
 	}
 	
 	
+	/// Adds a project to this workspace 
+	pub fn add_project(&mut self, project: Project) -> Result<(), String> {
+		let mut tree = XmlTree::from_file(&self.project_preferences_path());
+				
+		for root in tree.roots_mut() {
+			if root.tag() == "projects" {
+				root.merge_with_or_add(project.as_xml_element(), &mut |a, b| {
+					let mut a_attribs = a.attributes();
+					let mut b_attribs = b.attributes();
+					
+					loop {
+						if let Some(a_attrib) = a_attribs.next() {
+							if let Some(b_attrib) = b_attribs.next() {
+								
+								if a_attrib.key == "name" && b_attrib.key == "name" {
+									if a_attrib.value == b_attrib.value {
+										return true;
+									}
+								}
+								
+							} else {
+								break;
+							}
+						} else {
+							break;
+						}
+					}
+					false
+				});
+				break;
+			}
+		}
+		
+		if let Err(_) = tree.write_to_file(&self.project_preferences_path()) {
+			return Err("Failed to create new project".to_owned());
+		}
+		
+		Ok(())
+	}
+	
+	
 	/// Remove a named workspace, 'purge' determines wheter to completely erase from disk
 	pub fn remove(path: &str, purge: bool) -> Result<(), String> {
 		use std::path::{MAIN_SEPARATOR};
@@ -271,7 +320,7 @@ impl Workspace {
 	
 	/// Purges the workspace from disk
 	fn purge(&self) -> Result<(), String> {
-		if let Err(e) = fs::remove_dir_all(&self.path) {
+		if let Err(_) = fs::remove_dir_all(&self.path) {
 			return Err("Failed to purge workspace!".to_owned());
 		}
 		
@@ -281,11 +330,36 @@ impl Workspace {
 	
 	/// Creates the preference folder for a workspace
 	fn setup_preferences(&self) -> Result<(), String> {
-		use std::path::MAIN_SEPARATOR;
-		if let Err(e) = fs::create_dir(self.path.clone() + &MAIN_SEPARATOR.to_string() + ".workspace") {
-			return Err("Failed to create workspace preferences".to_owned());
+		use xmltree::XmlTree;
+		
+		// Create workspace folder
+		if let Err(e) = fs::create_dir(self.workspace_preferences_folder_path()) {
+			if e.kind() != ErrorKind::AlreadyExists {
+				return Err("Failed to create workspace preference folder".to_owned());
+			} 
+		}
+		
+		// Create project preferences
+		{
+			let default_layout = "<projects></projects>";
+			let tree = XmlTree::from_str(default_layout);
+			if let Err(_) = tree.write_to_file(&self.project_preferences_path()) {
+				return Err("Failed to create workspace project preferences".to_owned());
+			}
 		}
 		
 		Ok(())
+	}
+	
+	/// Return the path to the project preferences
+	fn workspace_preferences_folder_path(&self) -> String {
+		use std::path::MAIN_SEPARATOR;
+		self.path.clone() + &MAIN_SEPARATOR.to_string() + ".workspace"
+	}
+	
+	/// Return the path to the project preferences
+	fn project_preferences_path(&self) -> String {
+		use std::path::MAIN_SEPARATOR;
+		self.workspace_preferences_folder_path() + &MAIN_SEPARATOR.to_string() + "projects.xml"
 	}
 }

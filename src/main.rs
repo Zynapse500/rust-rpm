@@ -11,6 +11,8 @@ mod xmltree;
 mod workspace;
 use workspace::{Workspace};
 
+mod project;
+use project::Project;
 
 
 fn main() {
@@ -59,12 +61,10 @@ fn new_item(matches: &ArgMatches) {
 	
 	match matches.value_of("type") {
 		Some("workspace") => new_workspace(name),
-		Some("project") => unimplemented!(),
+		Some("project") => new_project(name),
 		Some(t) => fail_with_message(&format!("Error: {} is not recognized as internal type", t)),
 		None => fail_with_message("Error: Invalid argument parameters"),
 	}
-	
-	
 }
 
 
@@ -74,6 +74,14 @@ fn new_workspace(name: &str) {
 	});
 	
 	workspace.set_active();
+}
+
+
+fn new_project(name: &str) {
+	let mut workspace = get_current_workspace();
+	workspace.add_project(Project::from_str(name)).unwrap_or_else(|err| {
+		fail_with_message(&format!("Error: {}", err));
+	});
 }
 
 
