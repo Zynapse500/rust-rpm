@@ -1,365 +1,276 @@
 
 use std::fs;
-use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::io::{Write, Read, ErrorKind};
 
-use xmltree::{XmlTree, XmlElement};
+
 use project::Project;
 
+use serde_json;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Workspace {
-	pub name: String,
-	pub path: String
+	name: String,
+	path: String
 }
 
-const DEFAULT_FILE: &'static str = 
-"
-<workspaces>
-</workspaces>
-";
+const WORKSPACE_PREFERENCE_FOLDER_NAME: &'static str = ".workspace";
+const WORKSPACE_PROJECT_DATABASE_NAME: &'static str = "projects.json";
 
-const WORKSPACES_FILE_PATH: &'static str = "workspaces.xml";
 
 impl Workspace {
 	
 	// Creates a new workspace with the specified name
-	pub fn new(path: &str) -> Result<Workspace, String> {
-		use std::path::{MAIN_SEPARATOR};
-		let path = if MAIN_SEPARATOR == '\\' {path.replace("/", "\\")} else {path.replace("\\", "/")};
-		
-		// Get the name of the workspace
-		let name = (&path.chars().rev().take_while(|c| { *c != '/' && *c != '\\' }).collect::<String>()).chars().rev().collect::<String>();
-		
-		// Check if workspace already exists
-		if let Ok(_) = Workspace::lookup(&name) {
-			return Err("Workspace with that name already exists".to_owned());
-		}
-		
-		// Create the workspace folder
-		if let Err(e) = fs::create_dir_all(&path) {
-			return Err(format!("Failed to create workspace: {}", e));
-		}
-		
-		// Get the path to the workspace folder
-		use std::env::current_dir;
-		let workspace_path = current_dir().unwrap().join(&path).to_str().unwrap().to_owned();
-		
+	pub fn new(name: &str, path: &str) -> Result<Workspace, String> {
 		let workspace = Workspace {
-			name,
-			path: workspace_path
+			name: name.to_owned(),
+			path: path.to_owned()
 		};
 		
-		// Create preference folder
-		if let Err(e) = workspace.setup_preferences() {
-			return Err(format!("Failed to create workspace: {}", e));
+		if let Err(e) = workspace.add_to_workspace_list() {
+			return Err(e);
 		}
 		
-		
-		if let Err(e) = workspace.save() {
-			match e {
-				ErrorKind::AlreadyExists => return Err("Workspace with that name already exists".to_owned()),
-				_ => panic!("Failed to save workspace")
-			}
+		if let Err(_) = fs::create_dir_all(path) {
+			return Err("Failed to create workspace directory!".to_owned());
 		}
 		
+		if let Err(e) = workspace.create_preferences() {
+			return Err(e);
+		}
 		
 		Ok(workspace)
 	}
 	
 	
-	// Looks up a workspace from existing workspaces
-	pub fn lookup(name: &str) -> Result<Workspace, String> {
-		let tree = XmlTree::from_file(WORKSPACES_FILE_PATH);
+	/// Add this workspace to the list of workspaces
+	fn add_to_workspace_list(&self) -> Result<(), String> {
+		// Deserialize list
+		let mut workspaces = match WorkspaceList::get() {
+			Ok(workspace) => workspace,
+			Err(e) => return Err(e),
+		};
 		
-		for root in tree.roots() {
-			if root.tag() == "workspaces" {
-				for elem in root.elements() {
-					if let Some(workspace) = Workspace::from_xml_element(elem) {
-						if workspace.name == name {
-							return Ok(workspace);
-						}
-					}
-				}
-			}
+		// Check if workspace with the same name already exists
+		if let Ok(_) = workspaces.lookup_index(&self.name) {
+			return Err(format!("Workspace with the name '{}' already exists", self.name).to_owned())
 		}
 		
-		Err(format!("Error: \"Could not find workspace with the name '{}'\"", name))
-	}
-	
-	
-	// Looks up the current workspace
-	pub fn current() -> Result<Workspace, String> {
-		let tree = XmlTree::from_file(WORKSPACES_FILE_PATH);
+		// Add the workspace to the list
+		workspaces.workspaces.push(self.clone());
 		
-		for root in tree.roots() {
-			if root.tag() == "workspaces" {
-				for elem in root.elements() {
-					if elem.tag() == "current" {
-						for attrib in elem.attributes() {
-							if attrib.key == "name" {
-								return Workspace::lookup(&attrib.value);
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		Err("No workspace currently selected!".to_owned())
-	}
-	
-	
-	// Save this workspace to the list of workspaces
-	pub fn save(&self) -> Result<(), ErrorKind> {
-		use std::fs::{File};
-		use std::path::Path;
-		
-		use std::io::Write;
-		if Path::new(WORKSPACES_FILE_PATH).exists() == false {
-			let mut file = File::create(WORKSPACES_FILE_PATH).unwrap();
-			file.write(DEFAULT_FILE.as_bytes()).unwrap();
-		}
-		
-		
-		let mut tree = XmlTree::from_file(WORKSPACES_FILE_PATH);
-		
-		for root in tree.roots_mut() {
-			if root.tag() == "workspaces" {
-				
-				for elem in root.elements() {
-					if elem.tag() == "workspace" {
-						
-						for attrib in elem.attributes() {
-							if attrib.key == "name" && attrib.value == self.name {
-								return Err(ErrorKind::AlreadyExists);
-							}
-						}
-					}
-				}
-				
-				root.add_element(self.as_xml_element());
-			}
-		}
-		
-		
-		tree.write_to_file(WORKSPACES_FILE_PATH)
-	}
-	
-	
-	/// Return this workspace as an XmlElement 
-	pub fn as_xml_element(&self) -> XmlElement {
-		use xmltree::XmlAttribute;
-		let attribs = vec![
-			XmlAttribute{key: "name".to_owned(), value: self.name.clone()},
-			XmlAttribute{key: "path".to_owned(), value: self.path.clone()},
-		];
-		
-		XmlElement::new("workspace", "", attribs, Vec::new())
-	}
-	
-	/// Create a workspace from an XmlElement
-	pub fn from_xml_element(element: &XmlElement) -> Option<Workspace> {
-		if element.tag() == "workspace" {
-			let mut name = None;
-			let mut path = None;
-			
-			for attrib in element.attributes() {
-				if attrib.key == "name" {
-					name = Some(attrib.value.clone());
-				} else if attrib.key == "path" {
-					path = Some(attrib.value.clone());
-				} else {
-					return None;
-				}
-			}
-			
-			if let Some(name) = name {
-				if let Some(path) = path {
-					return Some(Workspace{name, path});
-				}
-			}
-		}		
-		return None;
+		workspaces.save()
 	} 
 	
+	
 	/// Sets this workspace as the active one
-	pub fn set_active(&self) {
-		let mut tree = XmlTree::from_file(WORKSPACES_FILE_PATH);
-		{
-			let mut update_tree = || {
-				for root in tree.roots_mut() {
-					if root.tag() == "workspaces" {
-						for elem in root.elements_mut() {
-							if elem.tag() == "current" {
-								for attrib in elem.attributes_mut() {
-									if attrib.key == "name" {
-										attrib.value = self.name.clone();
-										return;
-									}
-								}
-							}
-						}
-						use xmltree::XmlAttribute;
-						root.add_element(XmlElement::new(
-							"current",
-							"",
-							vec![XmlAttribute::new("name", &self.name)],
-							Vec::new()
-						));
-						return;
-					}
-				}
-			};
-			update_tree();
+	pub fn set_active(&self) -> Result<(), String> {
+		// Deserialize list
+		let mut workspaces = match WorkspaceList::get() {
+			Ok(workspace) => workspace,
+			Err(e) => return Err(e),
+		};
+		
+		workspaces.current = self.name.clone();
+		
+		workspaces.save()
+	}
+	
+	
+	/// Returns the name of this workspace
+	pub fn name<'a>(&'a self) -> &'a str {
+		&self.name
+	}
+	
+	
+	fn create_preferences(&self) -> Result<(), String> {
+		/// Create the '.workspace' folder within the workspace root
+		let mut path = PathBuf::from(&self.path);
+		path.push(".workspace");
+		
+		if let Err(e) = fs::create_dir(&path) {
+			if e.kind() != ErrorKind::AlreadyExists {
+				return Err("Failed to create workspace preference folder!".to_owned());
+			}
 		}
 		
-		tree.write_to_file(WORKSPACES_FILE_PATH).unwrap();
+		self.create_project_database(path)
 	}
 	
 	
 	/// Adds a project to this workspace 
 	pub fn add_project(&mut self, project: Project) -> Result<(), String> {
-		let mut tree = XmlTree::from_file(&self.project_preferences_path());
-				
-		for root in tree.roots_mut() {
-			if root.tag() == "projects" {
-				root.merge_with_or_add(project.as_xml_element(), &mut |a, b| {
-					let mut a_attribs = a.attributes();
-					let mut b_attribs = b.attributes();
-					
-					loop {
-						if let Some(a_attrib) = a_attribs.next() {
-							if let Some(b_attrib) = b_attribs.next() {
-								
-								if a_attrib.key == "name" && b_attrib.key == "name" {
-									if a_attrib.value == b_attrib.value {
-										return true;
-									}
-								}
-								
-							} else {
-								break;
-							}
-						} else {
-							break;
-						}
-					}
-					false
-				});
-				break;
-			}
-		}
-		
-		if let Err(_) = tree.write_to_file(&self.project_preferences_path()) {
-			return Err("Failed to create new project".to_owned());
-		}
-		
-		Ok(())
-	}
-	
-	
-	/// Remove a named workspace, 'purge' determines wheter to completely erase from disk
-	pub fn remove(path: &str, purge: bool) -> Result<(), String> {
-		use std::path::{MAIN_SEPARATOR};
-		let path = if MAIN_SEPARATOR == '\\' {path.replace("/", "\\")} else {path.replace("\\", "/")};
-		
-		let name = (path.chars().rev().take_while(|c| { *c != '/' && *c != '\\' }).collect::<String>()).chars().rev().collect::<String>();
-		
-		let mut tree = XmlTree::from_file(WORKSPACES_FILE_PATH);
-		
-		let mut success = false;
-		
-		for root in tree.roots_mut() {
-			if root.tag() == "workspaces" {
-				
-				let removed_item = root.remove(|elem|{
-					if elem.tag() == "workspace" {
-						let mut correct_name = false;
-						let mut correct_path = false;
-						for attrib in elem.attributes() {
-							if attrib.key == "name" && attrib.value == name {
-								correct_name = true;
-							} else if attrib.key == "path" && attrib.value.contains(&path) {
-								correct_path = true;
-							}
-						}
-						if correct_name && correct_path {
-							return true;
-						}
-					}
-					false
-				});
-				
-				if let Some(element) = removed_item {
-					if purge {
-						if let Some(workspace) = Workspace::from_xml_element(&element) {
-							if let Err(e) = workspace.purge() {
-								return Err(e);
-							}
-						}
-					}
-					success = true;
-					break;
-				}
-			}
-		}
-		
-		if success {
-			if let Err(e) = tree.write_to_file(WORKSPACES_FILE_PATH) {
-				match e {
-					ErrorKind::AlreadyExists => return Err("Workspace with that name already exists".to_owned()),
-					_ => return Err("Failed to remove workspace, failed to save changes".to_owned())
-				}
-			} else {
-				return Ok(());
-			}
-		}
-		
-		Err(format!("No workspace with the name '{}'", name))
-	}
-	
-	
-	/// Purges the workspace from disk
-	fn purge(&self) -> Result<(), String> {
-		if let Err(_) = fs::remove_dir_all(&self.path) {
-			return Err("Failed to purge workspace!".to_owned());
-		}
-		
-		Ok(())
+		unimplemented!()
 	}
 	
 	
 	/// Creates the preference folder for a workspace
-	fn setup_preferences(&self) -> Result<(), String> {
-		use xmltree::XmlTree;
+	fn create_project_database(&self, mut path: PathBuf) -> Result<(), String> {
+		path.push(WORKSPACE_PROJECT_DATABASE_NAME);
 		
-		// Create workspace folder
-		if let Err(e) = fs::create_dir(self.workspace_preferences_folder_path()) {
-			if e.kind() != ErrorKind::AlreadyExists {
-				return Err("Failed to create workspace preference folder".to_owned());
-			} 
-		}
-		
-		// Create project preferences
-		{
-			let default_layout = "<projects></projects>";
-			let tree = XmlTree::from_str(default_layout);
-			if let Err(_) = tree.write_to_file(&self.project_preferences_path()) {
-				return Err("Failed to create workspace project preferences".to_owned());
+		if !Path::new(&path).exists() {
+			match fs::File::create(&path) {
+				Ok(mut file) => match file.write_all(b"{ \"projects\": [] }") {
+					Ok(_) => (),
+					Err(_) => return Err("Failed to write to project databse!".to_owned())
+				}
+				Err(_) => return Err("Failed to create project database!".to_owned()),
 			}
 		}
 		
 		Ok(())
 	}
 	
+	
 	/// Return the path to the project preferences
 	fn workspace_preferences_folder_path(&self) -> String {
 		use std::path::MAIN_SEPARATOR;
-		self.path.clone() + &MAIN_SEPARATOR.to_string() + ".workspace"
+		self.path.clone() + &MAIN_SEPARATOR.to_string() + WORKSPACE_PREFERENCE_FOLDER_NAME
 	}
 	
 	/// Return the path to the project preferences
 	fn project_preferences_path(&self) -> String {
 		use std::path::MAIN_SEPARATOR;
-		self.workspace_preferences_folder_path() + &MAIN_SEPARATOR.to_string() + "projects.xml"
+		self.workspace_preferences_folder_path() + &MAIN_SEPARATOR.to_string() + WORKSPACE_PROJECT_DATABASE_NAME
+	}
+}
+
+
+#[derive(Serialize, Deserialize)]
+pub struct WorkspaceList {
+	workspaces: Vec<Workspace>,
+	
+	#[serde(default = "default_current_workspace")]
+	current: String
+}
+
+const WORKSPACES_FILE_NAME: &'static str = "workspaces.json";
+
+fn default_current_workspace() -> String {
+	"".to_owned()
+}
+
+
+impl WorkspaceList {
+	/// Load the current workspace list from a file
+	pub fn get() -> Result<WorkspaceList, String> {
+		let workspace_file_path = WorkspaceList::path()?;
+		
+		// Add file if it doesn't exist
+		if !Path::new(&workspace_file_path).exists() {
+			match fs::File::create(&workspace_file_path) {
+				Ok(mut file) => match file.write_all(b"{\"workspaces\": [], \"current\": \"\"}") {
+					Ok(_) => (),
+					Err(_) => return Err("Failed to write to workspace list file!".to_owned())
+				}
+				Err(_) => return Err("Failed to create workspace list file!".to_owned()),
+			}
+		}
+		
+		let mut workspace_file = String::new();
+		match fs::File::open(&workspace_file_path) {
+			Ok(mut file) => match file.read_to_string(&mut workspace_file) {
+				Ok(_) => (),
+				Err(_) => return Err("Failed to write to workspace list file!".to_owned())
+			}
+			Err(_) => return Err("Failed to open workspace list file!".to_owned()),
+		}
+		
+		// Deserialize list
+		let workspaces: WorkspaceList = match serde_json::from_str(&workspace_file){
+			Ok(workspaces) => workspaces,
+			Err(_) => return Err("Failed to load workspace list!".to_owned()),
+		};
+		
+		Ok(workspaces)
+	}
+	
+
+	/// Write the current workspace list to a file
+	pub fn save(&self) -> Result<(), String> {
+		let workspace_file_path = WorkspaceList::path()?;
+		
+		// Reseralize list
+		let workspace_file = serde_json::to_string_pretty(self).unwrap();
+		
+		match fs::File::create(&workspace_file_path) {
+			Ok(mut file) => match file.write_all(workspace_file.as_bytes()) {
+				Ok(_) => (),
+				Err(_) => return Err("Failed to write to workspace list file!".to_owned())
+			}
+			Err(_) => return Err("Failed to create/open workspace list file!".to_owned()),
+		}
+		
+		Ok(())
+	}
+	
+	
+	// Looks up a workspace from existing workspaces
+	pub fn lookup(&self, name: &str) -> Result<Workspace, String> {
+		if let Some(workspace) = self.workspaces.iter().find(|elem|{ elem.name.to_lowercase() == name }) {
+			return Ok(workspace.clone());
+		} else {
+			return Err(format!("No workspace with the name '{}'!", name).to_owned());
+		}
+	}
+	
+	
+	// Looks up a workspace's index from existing workspaces
+	pub fn lookup_index(&self, name: &str) -> Result<usize, String> {
+		let name = name.to_lowercase();
+		if let Some(index) = self.workspaces.iter().position(|elem|{ elem.name.to_lowercase() == name }) {
+			return Ok(index);
+		} else {
+			return Err(format!("No workspace with the name '{}'!", name).to_owned());
+		}
+	}
+	
+	
+	// Looks up the current workspace
+	pub fn current(&self) -> Result<Workspace, String> {
+		if let Ok(workspace) = self.lookup(&self.current) {
+			return Ok(workspace.clone());
+		} else {
+			return Err("No workspace currently selected!".to_owned());
+		}
+	}
+	
+	
+	/// Remves a workspace from the list, optionally removes the directory aswell
+	pub fn remove(&mut self, name: &str, purge: bool) -> Result<(), String> {
+		match self.lookup_index(name) {
+			Ok(index) => {
+				let removed = self.workspaces.remove(index);
+				if purge {
+					match fs::remove_dir_all(removed.path) {
+						Ok(_) => (),
+						Err(_) => return Err("Failed to purge workspace!".to_owned()),
+					}
+				}
+			},
+			Err(e) => return Err(e),
+		}
+		
+		if self.current.to_lowercase() == name.to_lowercase() {
+			self.current = "".to_owned();
+		}
+		
+		Ok(())
+	}
+	
+	
+	/// Return the path to the workspaces file
+	fn path() -> Result<String, String> {
+		use std::env::current_exe;
+		
+		match current_exe() {
+			Ok(mut exe_path) => {
+				exe_path.set_file_name(WORKSPACES_FILE_NAME);
+				return Ok(exe_path.to_str().unwrap().to_owned());
+			}
+			Err(_) => {
+				return Err("Failed to get path to 'rpm' executable!".to_owned());
+			}
+		}
 	}
 }

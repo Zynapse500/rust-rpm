@@ -11,7 +11,7 @@
 				"echo": false,
 				"reveal": "silent",
 				"focus": true,
-				"panel": "dedicated"
+				"panel": "new"
 			}
 		},
 		{
@@ -22,7 +22,7 @@
 				"echo": false,
 				"reveal": "silent",
 				"focus": true,
-				"panel": "dedicated"
+				"panel": "new"
 			}
 		}
 	]

@@ -15,6 +15,7 @@ pub fn get_matches<'a>() -> ArgMatches<'a> {
 		.subcommand(remove_item_command())
 		
 		.subcommand(switch_workspace_command())
+		.subcommand(display_current_workspace_command())
 		
 		.get_matches()
 }
@@ -30,6 +31,13 @@ fn new_item_command<'a>() -> App<'a, 'a> {
 		.arg(Arg::with_name("name")
 			.help("The name of the new item")
 			.required(true))
+		.arg(Arg::with_name("path")
+			.help("[Optional] The path of the new item")
+			.short("d")
+			.long("directory")
+			.takes_value(true)
+			.value_name("path")
+			.required(false))
 }
 
 
@@ -41,6 +49,12 @@ fn switch_workspace_command<'a>() -> App<'a, 'a> {
 			.required(true)
 			)
 }
+
+fn display_current_workspace_command<'a>() -> App<'a, 'a> {
+	App::new("current")
+		.about("Displays the name of the active workspace")
+}
+
 
 fn remove_item_command<'a>() -> App<'a, 'a> {
 	App::new("remove")

@@ -12,5 +12,7 @@ path = "src/main.rs"
 [dependencies]
 getch = "*"
 clap = "*"
-quick-xml = "*"
 
+serde = "*"
+serde_derive = "*"
+serde_json = "*"

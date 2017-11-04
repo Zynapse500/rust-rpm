@@ -7,7 +7,7 @@
 			"request": "launch",
 			"preLaunchTask": "build debug",
 			"program": "${workspaceFolder}/target/debug/rpm.exe",
-			"args": ["new", "project", "rust:tetris"],
+			"args": ["current"],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",
 			"environment": [],
