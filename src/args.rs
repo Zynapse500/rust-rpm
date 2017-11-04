@@ -17,6 +17,8 @@ pub fn get_matches<'a>() -> ArgMatches<'a> {
 		.subcommand(switch_workspace_command())
 		.subcommand(display_current_workspace_command())
 		
+		.subcommand(open_project())
+		
 		.get_matches()
 }
 
@@ -71,5 +73,15 @@ fn remove_item_command<'a>() -> App<'a, 'a> {
 			.short("p")
 			.long("purge")
 			.help("Erases the item from disk completely")
+			)
+}
+
+
+fn open_project<'a>() -> App<'a, 'a> {
+	App::new("open")
+		.about("Opens a project in the file explorer")
+		.arg(Arg::with_name("name")
+			.help("The name of the project")
+			.required(true)
 			)
 }

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::io::{Write, Read, ErrorKind};
 
 
-use project::Project;
+use project::{Project, ProjectList};
 
 use serde_json;
 
@@ -16,6 +16,7 @@ pub struct Workspace {
 
 const WORKSPACE_PREFERENCE_FOLDER_NAME: &'static str = ".workspace";
 const WORKSPACE_PROJECT_DATABASE_NAME: &'static str = "projects.json";
+const WORKSPACE_PROJECTS_FOLDER_NAME: &'static str = "projects";
 
 
 impl Workspace {
@@ -100,8 +101,42 @@ impl Workspace {
 	
 	/// Adds a project to this workspace 
 	pub fn add_project(&mut self, project: Project) -> Result<(), String> {
-		unimplemented!()
+		let project_database_path = self.project_database_path();
+		
+		// Deserialize list
+		let mut project_list: ProjectList = match ProjectList::get(&project_database_path) {
+			Ok(project_list) => project_list,
+			Err(e) => return Err(e),
+		};
+		
+		
+		if let Err(e) = project_list.add(project.clone()) {
+			return Err(e);
+		}
+		
+		let mut path = PathBuf::from(&self.path);
+		path.push(WORKSPACE_PROJECTS_FOLDER_NAME);
+		if let Err(e) = project.create_folder(path) {
+			return Err(e);
+		}
+		
+		project_list.save(&project_database_path)
 	}
+	
+	
+	/// Searches the project list for a project with the correct name
+	pub fn lookup_project_with_path(&self, name: &str) -> Result<(Project, String), String> {
+		let project_database_path = self.project_database_path();
+		
+		// Deserialize list
+		let mut project_list: ProjectList = match ProjectList::get(&project_database_path) {
+			Ok(project_list) => project_list,
+			Err(e) => return Err(e),
+		};
+		
+		project_list.lookup_project_with_path(name)
+	}
+	
 	
 	
 	/// Creates the preference folder for a workspace
@@ -129,7 +164,7 @@ impl Workspace {
 	}
 	
 	/// Return the path to the project preferences
-	fn project_preferences_path(&self) -> String {
+	fn project_database_path(&self) -> String {
 		use std::path::MAIN_SEPARATOR;
 		self.workspace_preferences_folder_path() + &MAIN_SEPARATOR.to_string() + WORKSPACE_PROJECT_DATABASE_NAME
 	}
@@ -138,6 +173,7 @@ impl Workspace {
 
 #[derive(Serialize, Deserialize)]
 pub struct WorkspaceList {
+	#[serde(default = "default_workspaces")]
 	workspaces: Vec<Workspace>,
 	
 	#[serde(default = "default_current_workspace")]
@@ -148,6 +184,10 @@ const WORKSPACES_FILE_NAME: &'static str = "workspaces.json";
 
 fn default_current_workspace() -> String {
 	"".to_owned()
+}
+
+fn default_workspaces() -> Vec<Workspace> {
+	Vec::new()
 }
 
 

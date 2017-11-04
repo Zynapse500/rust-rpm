@@ -35,6 +35,9 @@ fn main() {
 		// Switch to a new workspace
 		("switch", Some(m)) => switch_workspace(m),
 		
+		// Open a project
+		("open", Some(m)) => open_project(m),
+		
 		// Display the current workspace
 		("current", Some(m)) => display_current_workspace(m),
 		
@@ -151,4 +154,21 @@ fn remove_workspace(name: &str, purge: bool) {
 	workspace_list.remove(name, purge).unwrap_or_else(|err|{fail_with_error(err)});
 	
 	workspace_list.save().unwrap_or_else(|err|{fail_with_error(err)});
+}
+
+
+fn open_project(matches: &ArgMatches) {
+	use std::process::Command;
+	
+	let name = matches.value_of("name").unwrap();
+	
+	let current_workspace = get_current_workspace();
+	
+	let (project, path) = current_workspace.lookup_project_with_path(name).unwrap_or_else(|err|{fail_with_error(err)});
+	
+	if cfg!(target_os = "windows") {
+		Command::new("explorer")
+			.arg(&path)
+			.spawn();
+	}
 }
