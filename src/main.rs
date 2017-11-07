@@ -62,7 +62,6 @@ fn pause() {
 
 fn fail_with_message(msg: &str) -> ! {
 	println!("{}", msg);
-	pause();
 	std::process::exit(1);
 }
 
