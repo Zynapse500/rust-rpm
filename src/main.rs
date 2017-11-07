@@ -22,6 +22,13 @@ use project::Project;
 use std::path::PathBuf;
 
 
+macro_rules! try_fatal {
+	($e:expr) => (
+		($e).unwrap_or_else(|err|{fail_with_error(err)})
+	)
+}
+
+
 fn main() {
 	let matches = args::get_matches();
 	
@@ -43,8 +50,6 @@ fn main() {
 		
 		_ => ()
 	}
-	
-	pause();
 }
 
 fn pause() {
@@ -68,11 +73,32 @@ fn fail_with_error(err: String) -> ! {
 
 
 fn get_current_workspace() -> Workspace {
-	let workspace_list = WorkspaceList::get().unwrap_or_else(|err|{fail_with_error(err)});
+	try_fatal!(try_fatal!(WorkspaceList::get()).current())
+}
+
+
+fn get_confirmation(message: &str) -> bool {
+	use std::io::{stdin, stdout, Write};
 	
-	workspace_list.current().unwrap_or_else(|err| {
-		fail_with_message(&format!("Error: {}", err));
-	})
+	print!("{} (Y/n) ", message);
+	stdout().flush();
+	
+	let mut answer = String::new();
+	
+	stdin().read_line(&mut answer).expect("Did not enter a correct string");
+	
+	if let Some('\n')= answer.chars().next_back() {
+		answer.pop();
+	}
+	if let Some('\r')= answer.chars().next_back() {
+		answer.pop();
+	}
+	
+	return if "y" == answer.to_lowercase() {
+		true
+	} else {
+		false
+	}
 }
 
 
@@ -81,7 +107,7 @@ fn new_item(matches: &ArgMatches) {
 	use std::path::MAIN_SEPARATOR;
 	
 	let name = matches.value_of("name").unwrap();
-	let mut path = {
+	let path = {
 		let mut absolute_path = current_dir().unwrap();
 		absolute_path.push( PathBuf::from(
 		if matches.is_present("path") {
@@ -103,57 +129,66 @@ fn new_item(matches: &ArgMatches) {
 
 
 fn new_workspace(name: &str, path: &str) {
-	let workspace = Workspace::new(name, path).unwrap_or_else(|err|{fail_with_error(err)});
-	
-	workspace.set_active().unwrap_or_else(|err|{fail_with_error(err)});
+	let workspace = try_fatal!(Workspace::new(name, path));
+	try_fatal!(workspace.set_active());
 }
 
 
 fn new_project(name: &str) {
 	let mut workspace = get_current_workspace();
-	workspace.add_project(Project::from_str(name)).unwrap_or_else(|err|{fail_with_error(err)});
+	try_fatal!(workspace.add_project(Project::from_str(name)));
 }
 
 
 fn switch_workspace(matches: &ArgMatches) {
 	let name = matches.value_of("name").unwrap();
-	
-	let workspace_list = WorkspaceList::get().unwrap_or_else(|err|{fail_with_error(err)});
-	
-	let workspace = workspace_list.lookup(name).unwrap_or_else(|err|{fail_with_error(err)});
-	
-	workspace.set_active().unwrap_or_else(|err|{fail_with_error(err)});
+	let workspace_list = try_fatal!(WorkspaceList::get());
+	let workspace = try_fatal!(workspace_list.lookup(name));
+	try_fatal!(workspace.set_active());
 }
 
 
 fn display_current_workspace(matches: &ArgMatches) {
-	let workspace_list = WorkspaceList::get().unwrap_or_else(|err|{fail_with_error(err)});
-	let current = workspace_list.current().unwrap_or_else(|err|{fail_with_error(err)});
+	let workspace_list = try_fatal!(WorkspaceList::get());
+	let current = try_fatal!(workspace_list.current());
 	
-	println!("Current workspace: '{}'", current.name());
+	if matches.is_present("list projects") {
+		let project_list = try_fatal!(current.get_project_list());
+		
+		println!("{}", project_list);
+	} else {
+		println!("Current workspace: '{}'", current.name());
+	}
 }
 
 
 fn remove_item(matches: &ArgMatches) {
 	let name = matches.value_of("name").unwrap();
-	let purge = matches.is_present("purge");
 	
 	match matches.value_of("type") {
-		Some("workspace") =>remove_workspace(name, purge),
-		Some("project") => unimplemented!(),
+		Some("workspace") =>remove_workspace(name),
+		Some("project") => remove_project(name), // fail_with_message("Removal of projects has been disabled in order to prevent unwanted loss of projects/data"),
 		Some(t) => fail_with_message(&format!("Error: '{}' is not recognized as internal type", t)),
 		None => fail_with_message("Error: Invalid argument parameters"),
 	}
 }
 
 
+fn remove_workspace(name: &str) {
+	let mut workspace_list = try_fatal!(WorkspaceList::get());
+	try_fatal!(workspace_list.remove(name));
+	try_fatal!(workspace_list.save());
+}
 
-fn remove_workspace(name: &str, purge: bool) {
-	let mut workspace_list = WorkspaceList::get().unwrap_or_else(|err|{fail_with_error(err)});
-	
-	workspace_list.remove(name, purge).unwrap_or_else(|err|{fail_with_error(err)});
-	
-	workspace_list.save().unwrap_or_else(|err|{fail_with_error(err)});
+
+fn remove_project(name: &str) {
+	if get_confirmation(&format!("Are you sure you want to remove the project '{}'? This is an irreversible action!", name)) {
+		let mut current_workspace = get_current_workspace();
+		try_fatal!(current_workspace.remove_project(name));
+		println!("Project removed!");
+	} else {
+		println!("Removal of project aborted!");
+	}
 }
 
 
@@ -164,11 +199,13 @@ fn open_project(matches: &ArgMatches) {
 	
 	let current_workspace = get_current_workspace();
 	
-	let (project, path) = current_workspace.lookup_project_with_path(name).unwrap_or_else(|err|{fail_with_error(err)});
+	let project_path = try_fatal!(current_workspace.get_project_path(name));
 	
 	if cfg!(target_os = "windows") {
-		Command::new("explorer")
-			.arg(&path)
-			.spawn();
+		if let Err(e) = Command::new("explorer")
+			.arg(&project_path)
+			.spawn() {
+			fail_with_message(&format!("Command Error: {}", e));
+		}
 	}
 }

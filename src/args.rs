@@ -7,7 +7,7 @@ use clap::{App, Arg, ArgMatches};
 
 pub fn get_matches<'a>() -> ArgMatches<'a> {
 	App::new("Project Manager")
-		.version("0.0.1")
+		.version("1.0.0")
 		.author("Christofer N. <christofer.nolander@gmail.com>")
 		.about("Manages various workspaces and projects")
 		
@@ -55,6 +55,12 @@ fn switch_workspace_command<'a>() -> App<'a, 'a> {
 fn display_current_workspace_command<'a>() -> App<'a, 'a> {
 	App::new("current")
 		.about("Displays the name of the active workspace")
+		.arg(Arg::with_name("list projects")
+			.help("Lists the projects of the current workspace")
+			.required(false)
+			.short("l")
+			.short("list")
+			)
 }
 
 
@@ -68,11 +74,6 @@ fn remove_item_command<'a>() -> App<'a, 'a> {
 		.arg(Arg::with_name("name")
 			.help("The name of the item")
 			.required(true)
-			)
-		.arg(Arg::with_name("purge")
-			.short("p")
-			.long("purge")
-			.help("Erases the item from disk completely")
 			)
 }
 

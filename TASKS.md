@@ -13,7 +13,6 @@ The list of completed and future features
 	- Contained within a workspace
 	- Can contain other projects (recursive)
 	- [x] Create blank project
-	- [ ] Remove projects
 	- [ ] Create project from template
 		- [ ] Templates should be stored globally
 		- [ ] Create and edit templates in preferred editor

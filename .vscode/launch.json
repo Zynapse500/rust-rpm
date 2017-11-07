@@ -7,7 +7,7 @@
 			"request": "launch",
 			"preLaunchTask": "build debug",
 			"program": "${workspaceFolder}/target/debug/rpm.exe",
-			"args": ["current"],
+			"args": ["remove", "project",  "threadpool:fnbox"],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",
 			"environment": [],

@@ -101,14 +101,7 @@ impl Workspace {
 	
 	/// Adds a project to this workspace 
 	pub fn add_project(&mut self, project: Project) -> Result<(), String> {
-		let project_database_path = self.project_database_path();
-		
-		// Deserialize list
-		let mut project_list: ProjectList = match ProjectList::get(&project_database_path) {
-			Ok(project_list) => project_list,
-			Err(e) => return Err(e),
-		};
-		
+		let mut project_list = self.get_project_list()?;
 		
 		if let Err(e) = project_list.add(project.clone()) {
 			return Err(e);
@@ -120,23 +113,53 @@ impl Workspace {
 			return Err(e);
 		}
 		
-		project_list.save(&project_database_path)
+		project_list.save(&self.project_database_path())
+	}
+	
+	/// Removes a project from this workspace 
+	pub fn remove_project(&mut self, name: &str) -> Result<(), String> {
+		let mut project_list = self.get_project_list()?;
+		
+		if let Err(e) = project_list.remove_project(name) {
+			return Err(e);
+		}
+		
+		project_list.save(&self.project_database_path())
 	}
 	
 	
-	/// Searches the project list for a project with the correct name
-	pub fn lookup_project_with_path(&self, name: &str) -> Result<(Project, String), String> {
+	/// Return the list of projects for a workspace
+	pub fn get_project_list(&self) -> Result<ProjectList, String> {
 		let project_database_path = self.project_database_path();
 		
 		// Deserialize list
-		let mut project_list: ProjectList = match ProjectList::get(&project_database_path) {
-			Ok(project_list) => project_list,
-			Err(e) => return Err(e),
-		};
-		
-		project_list.lookup_project_with_path(name)
+		match ProjectList::get(&project_database_path) {
+			Ok(project_list) => Ok(project_list),
+			Err(e) => Err(e),
+		}
 	}
 	
+	
+	/// Return the absolute path to a project with a name
+	pub fn get_project_path(&self, name: &str) -> Result<String, String> {
+		use std::path::MAIN_SEPARATOR;
+		
+		let project_list = self.get_project_list()?;
+		
+		if let Err(e) = project_list.exists(name) {
+			return Err(e);
+		}
+		
+		let mut path = PathBuf::from(&self.path);
+		path.push(WORKSPACE_PROJECTS_FOLDER_NAME);
+		path.push(&name.to_lowercase().replace(|c|{c == ':'}, &MAIN_SEPARATOR.to_string()));
+		
+		if !path.exists() {
+			return Err(format!("Project folder does not exist!\nProject folder not found in: '{}' ", path.to_str().unwrap()).to_string());
+		}
+		
+		Ok(path.to_str().unwrap().to_owned())
+	}
 	
 	
 	/// Creates the preference folder for a workspace
@@ -277,16 +300,10 @@ impl WorkspaceList {
 	
 	
 	/// Remves a workspace from the list, optionally removes the directory aswell
-	pub fn remove(&mut self, name: &str, purge: bool) -> Result<(), String> {
+	pub fn remove(&mut self, name: &str) -> Result<(), String> {
 		match self.lookup_index(name) {
 			Ok(index) => {
-				let removed = self.workspaces.remove(index);
-				if purge {
-					match fs::remove_dir_all(removed.path) {
-						Ok(_) => (),
-						Err(_) => return Err("Failed to purge workspace!".to_owned()),
-					}
-				}
+				self.workspaces.remove(index);
 			},
 			Err(e) => return Err(e),
 		}
